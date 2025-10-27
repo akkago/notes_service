@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: notes-postgres
+    environment:
+      POSTGRES_DB: notes_db
+      POSTGRES_USER: notes_user
+      POSTGRES_PASSWORD: notes_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/src/migrations:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    networks:
+      - notes-network
+
+  # NATS Message Broker
+  nats:
+    image: nats:2.9-alpine
+    container_name: notes-nats
+    command: ["--jetstream"]
+    ports:
+      - "4222:4222"
+    networks:
+      - notes-network
+
+  # Backend Service
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: notes-backend
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: notes_user
+      DB_PASSWORD: notes_password
+      DB_DATABASE: notes_db
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      JWT_EXPIRES_IN: 24h
+      MOLECULER_TRANSPORTER: nats://nats:4222
+      MOLECULER_LOG_LEVEL: info
+    depends_on:
+      - postgres
+      - nats
+    ports:
+      - "3000:3000"
+    networks:
+      - notes-network
+
+  # Frontend Service
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: notes-frontend
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    networks:
+      - notes-network
+
+volumes:
+  postgres_data:
+
+networks:
+  notes-network:
+    driver: bridge
